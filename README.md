@@ -6,4 +6,4 @@ cmake ..
 make
 ```
 
-Copy certificates in `build/bin/certificates`.
+Copy certificates in `build/bin/certificates` and edit `src/include/licensing_mqtt_config.h`

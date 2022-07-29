@@ -1,15 +1,16 @@
 #include "licensing.h"
 
 /* Standard includes. */
-#include <assert.h>
-#include <stdbool.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
+#include <assert.h>
+#include <errno.h>
 #include <time.h>
-
-/* POSIX includes. */
-#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <pwd.h>
+#include <unistd.h>
 #include <ifaddrs.h>
 #include <netpacket/packet.h>
 
@@ -116,12 +117,65 @@ void generate_HardwareId(char* hardware_id){
     strcpy(hardware_id, mac_hash);
 }
 
+/**
+ * @brief Return License File Path
+ * 
+ * @return The License File path.
+ */
+char* getLicensePath(){
+    /* TODO this should depend on the specific app */
+    const char* BASE_FOLDER = "./";
+
+    size_t lic_path_len =  strlen(BASE_FOLDER) + strlen(LICENSE_FOLDER_NAME) + strlen(LICENSE_FILE_NAME) +1;
+    char* LICENSE_FILE_PATH = malloc(sizeof(char) *lic_path_len);
+    LICENSE_FILE_PATH[0] = '\0';
+    strcat(LICENSE_FILE_PATH, BASE_FOLDER);
+    strcat(LICENSE_FILE_PATH, LICENSE_FOLDER_NAME);
+    strcat(LICENSE_FILE_PATH, LICENSE_FILE_NAME);
+
+    return LICENSE_FILE_PATH;
+}
+
 bool Licensing_CheckLicense(){
-    char hardware_id[MD5_DIGEST_LENGTH_AS_STRING];
+    bool firstStartup = false;
+    
+    char* LICENSE_FILE_PATH = getLicensePath();
+    
+    if(access(LICENSE_FILE_PATH, R_OK | W_OK) < 0) {
+        if(errno == ENOENT){
+            LogInfo( ("No license file found.") );
+            firstStartup = true;
+
+            size_t lic_dir_path_len = strlen(LICENSE_FILE_PATH) - strlen(LICENSE_FILE_NAME)+1;
+            char lic_dir_path[lic_dir_path_len];
+            strcpy(lic_dir_path, LICENSE_FILE_PATH);
+            lic_dir_path[lic_dir_path_len-1] = '\0';
+            
+            if(mkdir(lic_dir_path, S_IRWXU) < 0){
+                if(errno != EEXIST){                                        
+                    free(LICENSE_FILE_PATH);
+                    LogError( ("Cannot create License folder: %s", strerror(errno)) );        
+                    exit(EXIT_FAILURE);
+                }
+            }
+        }else{
+            free(LICENSE_FILE_PATH);
+            LogError( ("Cannot create License File: %s", strerror(errno)) );        
+            exit(EXIT_FAILURE);
+        }
+    }
 
     LogInfo( ("Generating Hardware ID") );
-    generate_HardwareId(hardware_id);
+    char hardware_id[MD5_DIGEST_LENGTH_AS_STRING];
+    generate_HardwareId(hardware_id);    
 
+    if(firstStartup) {        
+        //activateLicense + save license
+    }
+
+    // validate license
+
+    free(LICENSE_FILE_PATH);
 
     return true;
 }

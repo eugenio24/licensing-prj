@@ -23,7 +23,11 @@
  */
 #include "licensing_mqtt_config.h"
 
+
 #define APP_TYPE "a-01"
+
+#define LICENSE_FOLDER_NAME "license/"
+#define LICENSE_FILE_NAME "license.txt"
 
 bool Licensing_CheckLicense();
 
