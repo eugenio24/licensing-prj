@@ -3,7 +3,7 @@ cmake_minimum_required( VERSION 3.2.0 )
 project( LicenseApp )
 
 set( DEMO_NAME "LicenseApp" )
-set( SDK_FOLDER_NAME "aws-iot-sdk" )
+set( SDK_FOLDER_NAME "external/aws-iot-sdk" )
 
 # Set global path variables.
 get_filename_component(__root_dir "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
@@ -19,21 +19,17 @@ set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
 set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib )
 set( CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib )
 
-
+# Include sdk 
 include( ${CMAKE_SOURCE_DIR}/${SDK_FOLDER_NAME}/demos/logging-stack/logging.cmake )
 
 add_subdirectory( ${MODULES_DIR} )
 add_subdirectory( ${PLATFORM_DIR} )
 
-# Include MQTT library's source and header path variables.
 include( ${MODULES_DIR}/standard/coreMQTT/mqttFilePaths.cmake )
-
-# Include backoffAlgorithm library file path configuration.
 include( ${MODULES_DIR}/standard/backoffAlgorithm/backoffAlgorithmFilePaths.cmake )
 
-
-# CPP files are searched for supporting CI build checks that verify C++ linkage of the coreMQTT library
-# file( GLOB DEMO_FILE "${DEMO_NAME}.c*" )
+# Include Licensing src
+include( src/licensing.cmake )
 
 # Demo target.
 add_executable(
@@ -42,6 +38,7 @@ add_executable(
         ${MQTT_SOURCES}
         ${MQTT_SERIALIZER_SOURCES}
         ${BACKOFF_ALGORITHM_SOURCES}
+        ${LICENSING_SOURCES}
 )
 
 target_link_libraries(
@@ -58,11 +55,5 @@ target_include_directories(
         ${BACKOFF_ALGORITHM_INCLUDE_PUBLIC_DIRS}
         ${CMAKE_CURRENT_LIST_DIR}
         ${LOGGING_INCLUDE_DIRS}
+        ${LICENSING_INCLUDE_DIRS}
 )
-
-# set_macro_definitions(TARGETS ${DEMO_NAME}
-#                       REQUIRED
-#                         "ROOT_CA_CERT_PATH"
-#                         "BROKER_ENDPOINT"
-#                         "CLIENT_IDENTIFIER"
-#                         "BROKER_PORT")
