@@ -35,7 +35,15 @@ typedef struct PublishPackets
 } PublishPackets_t;
 
 /*-----------------------------------------------------------*/
+
 bool recivedResponse = false; 
+
+/*-----------------------------------------------------------*/
+
+char* license = NULL; 
+
+/*-----------------------------------------------------------*/
+
 /**
  * @brief Packet Identifier generated when Subscribe request was sent to the broker;
  * it is used to match received Subscribe ACK to the transmitted subscribe.
@@ -159,6 +167,8 @@ int getTopicLen(int topicIndex){
 /*-----------------------------------------------------------*/
 
 static void parseResponse_Activation(char* payload, int payloadLength);
+
+static void parseResponse_Check(char* payload, int payloadLength);
 
 /*-----------------------------------------------------------*/
 
@@ -656,11 +666,12 @@ static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
                    ( int ) pPublishInfo->payloadLength,
                    ( const char * ) pPublishInfo->pPayload ) );
 
-        recivedResponse = true;
         if(topicIndex == 1){
-            parseResponse_Activation(pPublishInfo->pPayload, pPublishInfo->payloadLength);
+            recivedResponse = true;
+            parseResponse_Activation((char *) pPublishInfo->pPayload, pPublishInfo->payloadLength);
         }else if(topicIndex == 3){
-
+            recivedResponse = true;
+            parseResponse_Check((char *) pPublishInfo->pPayload, pPublishInfo->payloadLength);
         }
     }
     else
@@ -1140,7 +1151,7 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
 
 /*-----------------------------------------------------------*/
 
-static int publishActivation( MQTTContext_t* pMqttContext ){
+static int publish( MQTTContext_t* pMqttContext ){
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
 
@@ -1241,20 +1252,121 @@ static void prepareActivationResponse(){
     topicIndex = MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_INDEX;
 }
 
-static void prepareCheck(){
+static void prepareCheck(char* license, char* hw_id){
     topicIndex = MQTT_CHECK_LICENSE_REQUEST_TOPIC_INDEX;
 
+    if(payload != NULL){
+        free(payload);
+    }
+
+    char buf[JSON_SIZE];
+
+    sprintf(buf, "{\"license_key\":\"%s\",\"hardware_id\":\"%s\"}", license, hw_id);    
+    buf[JSON_SIZE-1] = '\0';
+
+    JSONStatus_t result = JSON_Validate(buf, strlen(buf));
+
+    if(result == JSONSuccess){
+        payloadLength = strlen(buf);
+        payload = malloc(sizeof(char) * (payloadLength+1));
+        memcpy(payload, buf, payloadLength);
+    }else{
+        LogError( ("Error creating JSON payload.") );
+        exit(EXIT_FAILURE);     
+    }  
+}
+
+static void prepareCheckResponse(){
+    topicIndex = MQTT_CHECK_LICENSE_RESPONSE_TOPIC_INDEX;
 }
 
 /*-----------------------------------------------------------*/
 
 static void parseResponse_Activation(char* payload, int payloadLength){
     JSONStatus_t status = JSON_Validate(payload, payloadLength);
-
+    
     if(status == JSONSuccess){
+        char * value;
+        size_t valueLength;
+        JSONTypes_t valueType;
+        char querysuccess[] = "success";
+        size_t querysuccessLength = sizeof( querysuccess ) - 1;
 
-        //status = JSON_Search( payload, payloadLength, queryKey, queryKeyLength, &value, &valueLength );
+        status = JSON_SearchT( payload, payloadLength, querysuccess, querysuccessLength, &value, &valueLength, &valueType );
 
+        if(status == JSONSuccess){
+            if(valueType == JSONTrue){
+                char queryValidLicense[] = "validLicense";
+                size_t queryValidLicenseLength = sizeof( queryValidLicense ) - 1;
+                status = JSON_SearchT( payload, payloadLength, queryValidLicense, queryValidLicenseLength, &value, &valueLength, &valueType );
+                
+                if(status == JSONSuccess){
+                    if(valueType == JSONTrue){
+                        char queryLicense[] = "license_key";
+                        size_t queryLicenseLength = sizeof( queryLicense ) - 1;
+                        status = JSON_SearchT( payload, payloadLength, queryLicense, queryLicenseLength, &value, &valueLength, &valueType );
+            
+                        if(status == JSONSuccess){
+                            value[ valueLength ] = '\0';
+
+                            license = malloc(sizeof(char)*(valueLength + 1));
+                            memcpy(license, value, valueLength);
+                            license[valueLength] = '\0';                            
+                        }
+                    }else{
+                        LogError( ("Cannot get License") );
+                    }
+                }
+            }else{
+                LogError( ("Bad Request") );        
+            }
+        }
+    }else{
+        LogError( ("Error parsing the response") );
+    }
+}
+
+/*-----------------------------------------------------------*/
+
+static void parseResponse_Check(char* payload, int payloadLength){
+    JSONStatus_t status = JSON_Validate(payload, payloadLength);
+    
+    if(status == JSONSuccess){
+        char * value;
+        size_t valueLength;
+        JSONTypes_t valueType;
+        char querysuccess[] = "success";
+        size_t querysuccessLength = sizeof( querysuccess ) - 1;
+
+        status = JSON_SearchT( payload, payloadLength, querysuccess, querysuccessLength, &value, &valueLength, &valueType );
+
+        if(status == JSONSuccess){
+            if(valueType == JSONTrue){
+                char queryValidLicense[] = "validLicense";
+                size_t queryValidLicenseLength = sizeof( queryValidLicense ) - 1;
+                status = JSON_SearchT( payload, payloadLength, queryValidLicense, queryValidLicenseLength, &value, &valueLength, &valueType );
+                
+                // if(status == JSONSuccess){
+                //     if(valueType == JSONTrue){
+                //         char queryLicense[] = "license_key";
+                //         size_t queryLicenseLength = sizeof( queryLicense ) - 1;
+                //         status = JSON_SearchT( payload, payloadLength, queryLicense, queryLicenseLength, &value, &valueLength, &valueType );
+            
+                //         if(status == JSONSuccess){
+                //             value[ valueLength ] = '\0';
+
+                //             license = malloc(sizeof(char)*(valueLength + 1));
+                //             memcpy(license, value, valueLength);
+                //             license[valueLength] = '\0';                            
+                //         }
+                //     }else{
+                //         LogError( ("Cannot get License") );
+                //     }
+                // }
+            }else{
+                LogError( ("Bad Request") );        
+            }
+        }
     }else{
         LogError( ("Error parsing the response") );
     }
@@ -1311,12 +1423,14 @@ int sendActivation(char* hw_id, char* app_type){
                 cleanupOutgoingPublishes();
             }
 
+            recivedResponse = false;
+
             prepareActivationResponse();
             returnStatus = subscribeRecive( &mqttContext );
 
             if(returnStatus == EXIT_SUCCESS){
                 prepareActivation(hw_id, app_type);
-                returnStatus = publishActivation( &mqttContext );
+                returnStatus = publish( &mqttContext );
             }
 
             /* Wait for the response */
@@ -1357,4 +1471,117 @@ int sendActivation(char* hw_id, char* app_type){
     }
 
     return returnStatus;
+}
+
+/* -------------------------------------------- */
+
+int sendCheck(char* license, char* hw_id){
+    int returnStatus = EXIT_SUCCESS;
+    MQTTContext_t mqttContext = { 0 };
+    NetworkContext_t networkContext = { 0 };
+    OpensslParams_t opensslParams = { 0 };
+    bool clientSessionPresent = false, brokerSessionPresent = false;
+    struct timespec tp;
+
+    /* Set the pParams member of the network context with desired transport. */
+    networkContext.pParams = &opensslParams;
+
+    /* Get current time to seed pseudo random number generator. */
+    ( void ) clock_gettime( CLOCK_REALTIME, &tp );
+    /* Seed pseudo random number generator with nanoseconds. */
+    srand( tp.tv_nsec );
+
+    /* Initialize MQTT library. Initialization of the MQTT library needs to be
+     * done only once. */
+    returnStatus = initializeMqtt( &mqttContext, &networkContext );
+
+    if( returnStatus == EXIT_SUCCESS ){
+        returnStatus = connectToServerWithBackoffRetries( &networkContext, &mqttContext, &clientSessionPresent, &brokerSessionPresent );
+
+        if( returnStatus == EXIT_FAILURE ){
+            LogError( ( "Failed to connect to MQTT broker %.*s.",
+                            AWS_IOT_ENDPOINT_LENGTH,
+                            AWS_IOT_ENDPOINT ) );
+        }else{
+            clientSessionPresent = true;
+
+            /* Check if session is present and if there are any outgoing publishes
+             * that need to resend. This is only valid if the broker is
+             * re-establishing a session which was already present. */
+            if( brokerSessionPresent == true )
+            {
+                LogInfo( ( "An MQTT session with broker is re-established. "
+                               "Resending unacked publishes." ) );
+
+                    /* Handle all the resend of publish messages. */
+                returnStatus = handlePublishResend( &mqttContext );
+            }else{
+                LogInfo( ( "A clean MQTT connection is established."
+                               " Cleaning up all the stored outgoing publishes." ) );
+
+                /* Clean up the outgoing publishes waiting for ack as this new
+                 * connection doesn't re-establish an existing session. */
+                cleanupOutgoingPublishes();
+            }
+
+            recivedResponse = false;
+
+            prepareCheckResponse();
+            returnStatus = subscribeRecive( &mqttContext );
+
+            if(returnStatus == EXIT_SUCCESS){
+                prepareCheck(license, hw_id);
+                returnStatus = publish( &mqttContext );
+            }
+
+            /* Wait for the response */
+            if(returnStatus == EXIT_SUCCESS){
+                topicIndex = MQTT_CHECK_LICENSE_RESPONSE_TOPIC_INDEX;
+
+                int i = 0;
+                while(!recivedResponse || i > 5 ){
+                    MQTTStatus_t mqttStatus = MQTT_ProcessLoop( &mqttContext, MQTT_PROCESS_LOOP_TIMEOUT_MS );
+
+                    if( mqttStatus != MQTTSuccess )
+                    {
+                        LogWarn( ( "MQTT_ProcessLoop failed: Error = %s.",
+                                    MQTT_Status_strerror( mqttStatus ) ) );
+                    }
+                    i++;
+                }
+            }
+
+            LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
+               AWS_IOT_ENDPOINT_LENGTH,
+               AWS_IOT_ENDPOINT ) );
+
+            if( returnStatus == EXIT_FAILURE )
+            {
+                /* Returned status is not used to update the local status as there
+                * were failures in execution. */
+                ( void ) disconnectMqttSession( &mqttContext );
+            }
+            else
+            {
+                returnStatus = disconnectMqttSession( &mqttContext );
+            }
+
+            /* End TLS session, then close TCP connection. */
+            ( void ) Openssl_Disconnect( &networkContext );
+        }
+    }
+
+    return returnStatus;
+}
+
+/* -------------------------------------------- */
+
+char* getLicense(){
+    char* licenseOut = malloc(sizeof(char)*(strlen(license)+1));
+    licenseOut[0] = '\0';
+
+    strcpy(licenseOut, license);
+
+    free(license);
+    return licenseOut;
 }

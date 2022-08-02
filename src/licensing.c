@@ -19,6 +19,8 @@
 #include <openssl/md5.h>
 #define MD5_DIGEST_LENGTH_AS_STRING MD5_DIGEST_LENGTH*2+1
 
+#define MAX_FILE_LEN 100
+
 /**
  * @brief Given a string compute the hash
  * 
@@ -173,27 +175,82 @@ bool checkFirstStartUp(char* LICENSE_FILE_PATH){
     return firstStartup;
 }
 
-void activateLicense(char* hw_id, char* app_type){
-    sendActivation(hw_id, app_type);
+char* activateLicense(char* hw_id, char* app_type){
+    int status = sendActivation(hw_id, app_type);
+    if(status == EXIT_FAILURE){
+        LogError( ("Cannot get License.") );        
+        exit(EXIT_FAILURE);
+    }
+
+    return getLicense();    
+}
+
+bool checkLicense(char* license, char* hw_id){
+    int status = sendCheck(license, hw_id);
+    if(status == EXIT_FAILURE){
+        LogError( ("Error validating License.") );        
+        exit(EXIT_FAILURE);
+    }
+    
+    return true;
 }
 
 bool Licensing_CheckLicense(){
     char* LICENSE_FILE_PATH = getLicensePath();
     bool firstStartup = checkFirstStartUp(LICENSE_FILE_PATH);
+    char* license;
 
     LogInfo( ("Generating Hardware ID") );
     char hardware_id[MD5_DIGEST_LENGTH_AS_STRING];
     generate_HardwareId(hardware_id);    
 
-    if(firstStartup) {        
-        //activateLicense + save license
 
-        activateLicense(hardware_id, APP_TYPE);
+    int license_file = open(LICENSE_FILE_PATH, O_CREAT | O_RDWR, 0700);
+    if(license_file < 0){
+        LogError(("Error while opening/creating license file: %s", strerror(errno)));        
+        exit(EXIT_FAILURE);
     }
 
-    // validate license
+    if(firstStartup) {
+        LogInfo(("Obtaining a license."));
+        license = activateLicense(hardware_id, APP_TYPE);
+
+        LogInfo(("Saving License."));
+
+        size_t l_len = strlen(license);
+        char buffer[l_len+2];
+        sprintf(buffer, "%s\n", license);
+
+        if(write(license_file, buffer, strlen(buffer)) < 0){
+            free(LICENSE_FILE_PATH);
+            free(license);
+            LogError(("Error while writing license file: %s", strerror(errno)));        
+            exit(EXIT_FAILURE);
+        }
+    }else{
+        LogInfo(("Reading License."));
+
+        char buffer[MAX_FILE_LEN] = {0};
+
+        int r = read(license_file, buffer, MAX_FILE_LEN);
+        if(r < 0){
+            free(LICENSE_FILE_PATH);
+            LogError(("Error while reading license file: %s", strerror(errno)));
+            exit(EXIT_FAILURE);
+        }
+
+        buffer[strcspn(buffer, "\r\n")] = 0;
+        
+        license = malloc(sizeof(char) * (strlen(buffer)+1));
+        license[0] = '\0';
+        strcpy(license, buffer);
+    }
+
+    // check license
+    bool licenseCheck = checkLicense(license, hardware_id);
 
     free(LICENSE_FILE_PATH);
-
-    return true;
+    free(license);
+    return licenseCheck;
 }
+

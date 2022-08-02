@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <unistd.h>
+#include <string.h>
 
 /**
  * Include mqtt config
@@ -216,5 +217,13 @@
 /* -------------------------------------------- */
 
 int sendActivation(char* hw_id, char* app_type);
+
+/* -------------------------------------------- */
+
+int sendCheck(char* hw_id, char* app_type);
+
+/* -------------------------------------------- */
+
+char* getLicense();
 
 #endif
