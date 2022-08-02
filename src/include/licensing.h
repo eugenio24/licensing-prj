@@ -18,12 +18,6 @@
 
 #include <stdbool.h>
 
-/**
- * Include mqtt config
- */
-#include "licensing_mqtt_config.h"
-
-
 #define APP_TYPE "a-01"
 
 #define LICENSE_FOLDER_NAME "license/"

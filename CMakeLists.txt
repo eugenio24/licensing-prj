@@ -27,6 +27,7 @@ add_subdirectory( ${PLATFORM_DIR} )
 
 include( ${MODULES_DIR}/standard/coreMQTT/mqttFilePaths.cmake )
 include( ${MODULES_DIR}/standard/backoffAlgorithm/backoffAlgorithmFilePaths.cmake )
+include( ${MODULES_DIR}/standard/coreJSON/jsonFilePaths.cmake )
 
 # Include Licensing src
 include( src/licensing.cmake )
@@ -35,6 +36,7 @@ include( src/licensing.cmake )
 add_executable(
     ${DEMO_NAME}
         "main.c"
+        ${JSON_SOURCES}
         ${MQTT_SOURCES}
         ${MQTT_SERIALIZER_SOURCES}
         ${BACKOFF_ALGORITHM_SOURCES}
@@ -51,6 +53,7 @@ target_link_libraries(
 target_include_directories(
     ${DEMO_NAME}
     PUBLIC
+        ${JSON_INCLUDE_PUBLIC_DIRS}
         ${MQTT_INCLUDE_PUBLIC_DIRS}
         ${BACKOFF_ALGORITHM_INCLUDE_PUBLIC_DIRS}
         ${CMAKE_CURRENT_LIST_DIR}

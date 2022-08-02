@@ -3,11 +3,6 @@
 
 /**
  * @brief Details of the MQTT broker to connect to.
- *
- * @note Your AWS IoT Core endpoint can be found in the AWS IoT console under
- * Settings/Custom Endpoint, or using the describe-endpoint API.
- *
- * #define AWS_IOT_ENDPOINT               "...insert here..."
  */
 #define AWS_IOT_ENDPOINT               "alcv3np28ivmm-ats.iot.us-east-1.amazonaws.com"
 
@@ -30,10 +25,6 @@
  * available. Refer to the AWS documentation available in the link below
  * https://docs.aws.amazon.com/iot/latest/developerguide/server-authentication.html#server-authentication-certs
  *
- * Amazon's root CA certificate is automatically downloaded to the certificates
- * directory from @ref https://www.amazontrust.com/repository/AmazonRootCA1.pem
- * using the CMake build system.
- *
  * @note This certificate should be PEM-encoded.
  * @note This path is relative from the demo binary created. Update
  * ROOT_CA_CERT_PATH to the absolute path if this demo is executed from elsewhere.
@@ -45,62 +36,16 @@
 /**
  * @brief Path of the file containing the client certificate.
  *
- * Refer to the AWS documentation below for details regarding client
- * authentication.
- * https://docs.aws.amazon.com/iot/latest/developerguide/client-authentication.html
- *
- * @note This certificate should be PEM-encoded.
- *
- * #define CLIENT_CERT_PATH    "...insert here..."
+ * @note This certificate should be PEM-encoded. 
  */
-#define CLIENT_CERT_PATH    "certificates/certificate.pem.crt"
+#define CLIENT_CERT_PATH    "certificates/ef99526b1858f6f802887531d94a8b8b6e52fe767cc29006857bc712d5344c85-certificate.pem.crt"
 
 /**
  * @brief Path of the file containing the client's private key.
  *
- * Refer to the AWS documentation below for details regarding client
- * authentication.
- * https://docs.aws.amazon.com/iot/latest/developerguide/client-authentication.html
- *
  * @note This private key should be PEM-encoded.
- *
- * #define CLIENT_PRIVATE_KEY_PATH    "...insert here..."
  */
-#define CLIENT_PRIVATE_KEY_PATH    "certificates/private.pem.key"
-
-/**
- * @brief The username value for authenticating client to MQTT broker when
- * username/password based client authentication is used.
- *
- * Refer to the AWS IoT documentation below for details regarding client
- * authentication with a username and password.
- * https://docs.aws.amazon.com/iot/latest/developerguide/custom-authentication.html
- * As mentioned in the link above, an authorizer setup needs to be done to use
- * username/password based client authentication.
- *
- * @note AWS IoT message broker requires either a set of client certificate/private key
- * or username/password to authenticate the client. If this config is defined,
- * the username and password will be used instead of the client certificate and
- * private key for client authentication.
- *
- * #define CLIENT_USERNAME    "...insert here..."
- */
-
-/**
- * @brief The password value for authenticating client to MQTT broker when
- * username/password based client authentication is used.
- *
- * Refer to the AWS IoT documentation below for details regarding client
- * authentication with a username and password.
- * https://docs.aws.amazon.com/iot/latest/developerguide/custom-authentication.html
- * As mentioned in the link above, an authorizer setup needs to be done to use
- * username/password based client authentication.
- *
- * @note AWS IoT message broker requires either a set of client certificate/private key
- * or username/password to authenticate the client.
- *
- * #define CLIENT_PASSWORD    "...insert here..."
- */
+#define CLIENT_PRIVATE_KEY_PATH    "certificates/ef99526b1858f6f802887531d94a8b8b6e52fe767cc29006857bc712d5344c85-private.pem.key"
 
 /**
  * @brief MQTT client identifier.
@@ -108,7 +53,7 @@
  * No two clients may use the same client identifier simultaneously.
  */
 #ifndef CLIENT_IDENTIFIER
-    #define CLIENT_IDENTIFIER    "testclient"
+    #define CLIENT_IDENTIFIER    "pi-3"
 #endif
 
 /**
@@ -144,4 +89,5 @@
 #include "core_mqtt.h"
 #define MQTT_LIB    "core-mqtt@" MQTT_LIBRARY_VERSION
 
-#endif /* ifndef DEMO_CONFIG_H_ */
+
+#endif

@@ -1,7 +1,8 @@
 
 # Licensing source files.
 set( LICENSING_SOURCES
-     "${CMAKE_CURRENT_LIST_DIR}/licensing.c" )
+     "${CMAKE_CURRENT_LIST_DIR}/licensing.c"
+     "${CMAKE_CURRENT_LIST_DIR}/mqtt_handler.c" )
 
 # Licensing Include directories.
 set( LICENSING_INCLUDE_DIRS     

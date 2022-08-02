@@ -1,4 +1,5 @@
 #include "licensing.h"
+#include "mqtt_handler.h"
 
 /* Standard includes. */
 #include <stdlib.h>
@@ -24,7 +25,7 @@
  * @param[in] str String to be hashed.
  * @param[out] digest Computed Hash.
  */
-void compute_md5(char *str, unsigned char digest[16]) {
+void compute_md5(char *str, unsigned char digest[16]){
     MD5_CTX ctx;
     MD5_Init(&ctx);
     MD5_Update(&ctx, str, strlen(str));
@@ -136,11 +137,15 @@ char* getLicensePath(){
     return LICENSE_FILE_PATH;
 }
 
-bool Licensing_CheckLicense(){
+/**
+ * @brief check if it's the first start, to do it check if the license file already exists, 
+ * if not, create the folder in which the license received from the server will then be saved.
+ * 
+ * @return true if firstStartup
+ */
+bool checkFirstStartUp(char* LICENSE_FILE_PATH){
     bool firstStartup = false;
-    
-    char* LICENSE_FILE_PATH = getLicensePath();
-    
+
     if(access(LICENSE_FILE_PATH, R_OK | W_OK) < 0) {
         if(errno == ENOENT){
             LogInfo( ("No license file found.") );
@@ -165,12 +170,25 @@ bool Licensing_CheckLicense(){
         }
     }
 
+    return firstStartup;
+}
+
+void activateLicense(char* hw_id, char* app_type){
+    sendActivation(hw_id, app_type);
+}
+
+bool Licensing_CheckLicense(){
+    char* LICENSE_FILE_PATH = getLicensePath();
+    bool firstStartup = checkFirstStartUp(LICENSE_FILE_PATH);
+
     LogInfo( ("Generating Hardware ID") );
     char hardware_id[MD5_DIGEST_LENGTH_AS_STRING];
     generate_HardwareId(hardware_id);    
 
     if(firstStartup) {        
         //activateLicense + save license
+
+        activateLicense(hardware_id, APP_TYPE);
     }
 
     // validate license
