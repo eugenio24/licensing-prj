@@ -192,7 +192,7 @@ bool checkLicense(char* license, char* hw_id){
         exit(EXIT_FAILURE);
     }
     
-    return true;
+    return isValidLicense();
 }
 
 bool Licensing_CheckLicense(){
@@ -208,7 +208,7 @@ bool Licensing_CheckLicense(){
     int license_file = open(LICENSE_FILE_PATH, O_CREAT | O_RDWR, 0700);
     if(license_file < 0){
         LogError(("Error while opening/creating license file: %s", strerror(errno)));        
-        exit(EXIT_FAILURE);
+        return false;
     }
 
     if(firstStartup) {
@@ -225,7 +225,7 @@ bool Licensing_CheckLicense(){
             free(LICENSE_FILE_PATH);
             free(license);
             LogError(("Error while writing license file: %s", strerror(errno)));        
-            exit(EXIT_FAILURE);
+            return false;
         }
     }else{
         LogInfo(("Reading License."));
@@ -236,7 +236,7 @@ bool Licensing_CheckLicense(){
         if(r < 0){
             free(LICENSE_FILE_PATH);
             LogError(("Error while reading license file: %s", strerror(errno)));
-            exit(EXIT_FAILURE);
+            return false;
         }
 
         buffer[strcspn(buffer, "\r\n")] = 0;

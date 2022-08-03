@@ -9,7 +9,8 @@ int main(){
 
     if(!validLicense) {
         printf("\nNO LICENSE\n");    
-    }   
+        exit(1);
+    }  
     
     printf("\nUNLOCKED APP");
     printf("\nEXAMPLE APP\n");

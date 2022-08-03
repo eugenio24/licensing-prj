@@ -226,4 +226,8 @@ int sendCheck(char* hw_id, char* app_type);
 
 char* getLicense();
 
+/* -------------------------------------------- */
+
+bool isValidLicense();
+
 #endif

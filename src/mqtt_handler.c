@@ -44,6 +44,10 @@ char* license = NULL;
 
 /*-----------------------------------------------------------*/
 
+bool validLicense = false; 
+
+/*-----------------------------------------------------------*/
+
 /**
  * @brief Packet Identifier generated when Subscribe request was sent to the broker;
  * it is used to match received Subscribe ACK to the transmitted subscribe.
@@ -1346,23 +1350,13 @@ static void parseResponse_Check(char* payload, int payloadLength){
                 size_t queryValidLicenseLength = sizeof( queryValidLicense ) - 1;
                 status = JSON_SearchT( payload, payloadLength, queryValidLicense, queryValidLicenseLength, &value, &valueLength, &valueType );
                 
-                // if(status == JSONSuccess){
-                //     if(valueType == JSONTrue){
-                //         char queryLicense[] = "license_key";
-                //         size_t queryLicenseLength = sizeof( queryLicense ) - 1;
-                //         status = JSON_SearchT( payload, payloadLength, queryLicense, queryLicenseLength, &value, &valueLength, &valueType );
-            
-                //         if(status == JSONSuccess){
-                //             value[ valueLength ] = '\0';
-
-                //             license = malloc(sizeof(char)*(valueLength + 1));
-                //             memcpy(license, value, valueLength);
-                //             license[valueLength] = '\0';                            
-                //         }
-                //     }else{
-                //         LogError( ("Cannot get License") );
-                //     }
-                // }
+                if(status == JSONmakSuccess){
+                    if(valueType == JSONTrue){
+                        validLicense = true;
+                    }else{
+                        LogError( ("Invalid License") );
+                    }
+                }
             }else{
                 LogError( ("Bad Request") );        
             }
@@ -1525,6 +1519,7 @@ int sendCheck(char* license, char* hw_id){
             }
 
             recivedResponse = false;
+            validLicense = false;
 
             prepareCheckResponse();
             returnStatus = subscribeRecive( &mqttContext );
@@ -1539,15 +1534,15 @@ int sendCheck(char* license, char* hw_id){
                 topicIndex = MQTT_CHECK_LICENSE_RESPONSE_TOPIC_INDEX;
 
                 int i = 0;
-                while(!recivedResponse || i > 5 ){
+                while(!recivedResponse){
                     MQTTStatus_t mqttStatus = MQTT_ProcessLoop( &mqttContext, MQTT_PROCESS_LOOP_TIMEOUT_MS );
 
                     if( mqttStatus != MQTTSuccess )
                     {
+                        break;
                         LogWarn( ( "MQTT_ProcessLoop failed: Error = %s.",
                                     MQTT_Status_strerror( mqttStatus ) ) );
-                    }
-                    i++;
+                    }                    
                 }
             }
 
@@ -1584,4 +1579,10 @@ char* getLicense(){
 
     free(license);
     return licenseOut;
+}
+
+/* -------------------------------------------- */
+
+bool isValidLicense(){
+    return validLicense;
 }
