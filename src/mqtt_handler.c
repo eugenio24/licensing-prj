@@ -1350,7 +1350,7 @@ static void parseResponse_Check(char* payload, int payloadLength){
                 size_t queryValidLicenseLength = sizeof( queryValidLicense ) - 1;
                 status = JSON_SearchT( payload, payloadLength, queryValidLicense, queryValidLicenseLength, &value, &valueLength, &valueType );
                 
-                if(status == JSONmakSuccess){
+                if(status == JSONSuccess){
                     if(valueType == JSONTrue){
                         validLicense = true;
                     }else{
