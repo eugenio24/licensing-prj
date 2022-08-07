@@ -41,6 +41,7 @@ bool recivedResponse = false;
 /*-----------------------------------------------------------*/
 
 char* license = NULL; 
+char* signature = NULL; 
 
 /*-----------------------------------------------------------*/
 
@@ -99,28 +100,28 @@ struct NetworkContext
 /**
  * @brief The activate license request topic. 
  */
-#define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC                 "licensing/activateLicense/" CLIENT_IDENTIFIER "/request"
+#define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC                 "v2/licensing/activateLicense/" CLIENT_IDENTIFIER "/request"
 #define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC_INDEX           0
 #define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC_LENGTH          ( ( uint16_t ) ( sizeof( MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC ) - 1 ) )
 
 /**
  * @brief The activate license response topic. 
  */
-#define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC                 "licensing/activateLicense/" CLIENT_IDENTIFIER "/response"
+#define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC                 "v2/licensing/activateLicense/" CLIENT_IDENTIFIER "/response"
 #define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_INDEX           1
 #define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_LENGTH          ( ( uint16_t ) ( sizeof( MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC ) - 1 ) )
 
 /**
  * @brief The check license request topic.
  */
-#define MQTT_CHECK_LICENSE_REQUEST_TOPIC                    "licensing/checkLicense/" CLIENT_IDENTIFIER "/request"
+#define MQTT_CHECK_LICENSE_REQUEST_TOPIC                    "v2/licensing/checkLicense/" CLIENT_IDENTIFIER "/request"
 #define MQTT_CHECK_LICENSE_REQUEST_TOPIC_INDEX              2
 #define MQTT_CHECK_LICENSE_REQUEST_TOPIC_LENGTH             ( ( uint16_t ) ( sizeof( MQTT_CHECK_LICENSE_REQUEST_TOPIC ) - 1 ) )
 
 /**
  * @brief The check license response topic.
  */
-#define MQTT_CHECK_LICENSE_RESPONSE_TOPIC                    "licensing/checkLicense/" CLIENT_IDENTIFIER "/response"
+#define MQTT_CHECK_LICENSE_RESPONSE_TOPIC                    "v2/licensing/checkLicense/" CLIENT_IDENTIFIER "/response"
 #define MQTT_CHECK_LICENSE_RESPONSE_TOPIC_INDEX              3
 #define MQTT_CHECK_LICENSE_RESPONSE_TOPIC_LENGTH             ( ( uint16_t ) ( sizeof( MQTT_CHECK_LICENSE_RESPONSE_TOPIC ) - 1 ) )
 
@@ -1286,7 +1287,7 @@ static void prepareCheckResponse(){
 
 /*-----------------------------------------------------------*/
 
-static void parseResponse_Activation(char* payload, int payloadLength){
+static void parseResponse_Activation(char* payload, int payloadLength){    
     JSONStatus_t status = JSON_Validate(payload, payloadLength);
     
     if(status == JSONSuccess){
@@ -1306,16 +1307,34 @@ static void parseResponse_Activation(char* payload, int payloadLength){
                 
                 if(status == JSONSuccess){
                     if(valueType == JSONTrue){
-                        char queryLicense[] = "license_key";
+                        char queryLicense[] = "license";
                         size_t queryLicenseLength = sizeof( queryLicense ) - 1;
-                        status = JSON_SearchT( payload, payloadLength, queryLicense, queryLicenseLength, &value, &valueLength, &valueType );
+                        status = JSON_Search( payload, payloadLength, queryLicense, queryLicenseLength, &value, &valueLength );
             
                         if(status == JSONSuccess){
-                            value[ valueLength ] = '\0';
+                            char save = value[ valueLength ];
+                            value[ valueLength ] = '\0';                        
 
                             license = malloc(sizeof(char)*(valueLength + 1));
                             memcpy(license, value, valueLength);
-                            license[valueLength] = '\0';                            
+                            license[valueLength] = '\0';
+                            
+                            value[ valueLength ] = save;
+                        
+                            char querySignature[] = "signature";
+                            size_t querySignatureLength = sizeof( querySignature ) - 1;
+                            status = JSON_Search( payload, payloadLength, querySignature, querySignatureLength, &value, &valueLength);                                                                    
+
+                            if(status == JSONSuccess){
+                                value[ valueLength ] = '\0';                        
+                                
+                                signature = malloc(sizeof(char)*(valueLength + 1));
+                                memcpy(signature, value, valueLength);
+                                signature[valueLength] = '\0';
+                            }else{
+                                LogError( ("Cannot get Signature") );
+                            }
+
                         }
                     }else{
                         LogError( ("Cannot get License") );
@@ -1432,15 +1451,14 @@ int sendActivation(char* hw_id, char* app_type){
                 topicIndex = MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_INDEX;
 
                 int i = 0;
-                while(!recivedResponse || i > 5 ){
+                while(!recivedResponse){
                     MQTTStatus_t mqttStatus = MQTT_ProcessLoop( &mqttContext, MQTT_PROCESS_LOOP_TIMEOUT_MS );
 
                     if( mqttStatus != MQTTSuccess )
                     {
                         LogWarn( ( "MQTT_ProcessLoop failed: Error = %s.",
                                     MQTT_Status_strerror( mqttStatus ) ) );
-                    }
-                    i++;
+                    }                    
                 }
             }
 
@@ -1571,14 +1589,30 @@ int sendCheck(char* license, char* hw_id){
 
 /* -------------------------------------------- */
 
-char* getLicense(){
-    char* licenseOut = malloc(sizeof(char)*(strlen(license)+1));
-    licenseOut[0] = '\0';
+int getLicense(char** licenseOut){    
+    if(license == NULL) return EXIT_FAILURE;
 
-    strcpy(licenseOut, license);
+    char* tmp = malloc(sizeof(char)*(strlen(license)+1));
+    tmp[0] = '\0';
+    strcpy(tmp, license);
+
+    *licenseOut = tmp;
 
     free(license);
-    return licenseOut;
+    return EXIT_SUCCESS;
+}
+
+int getSignature(char** signatureOut){    
+    if(signature == NULL) return  EXIT_FAILURE;
+
+    char* tmp = malloc(sizeof(char)*(strlen(signature)+1));
+    tmp[0] = '\0';
+    strcpy(tmp, signature);
+
+    *signatureOut = tmp;
+
+    free(signature);
+    return EXIT_SUCCESS;
 }
 
 /* -------------------------------------------- */

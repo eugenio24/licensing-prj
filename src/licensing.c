@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE // for strptime
+
 #include "licensing.h"
 #include "mqtt_handler.h"
 
@@ -15,11 +17,23 @@
 #include <ifaddrs.h>
 #include <netpacket/packet.h>
 
-/* openssl md5 */
+/* openssl */
 #include <openssl/md5.h>
 #define MD5_DIGEST_LENGTH_AS_STRING MD5_DIGEST_LENGTH*2+1
+#include <openssl/pem.h>
+#include <openssl/rsa.h>
+#include <openssl/sha.h>
+
+#include "base64_utils.h"
 
 #define MAX_FILE_LEN 100
+
+struct parsedLicense_t {
+    char* app_type;
+    char* license_key;
+    char* hardware_id;
+    char* expiration;
+};
 
 /**
  * @brief Given a string compute the hash
@@ -27,11 +41,18 @@
  * @param[in] str String to be hashed.
  * @param[out] digest Computed Hash.
  */
-void compute_md5(char *str, unsigned char digest[16]){
+void compute_md5(char *str, unsigned char digest[MD5_DIGEST_LENGTH]){
     MD5_CTX ctx;
     MD5_Init(&ctx);
     MD5_Update(&ctx, str, strlen(str));
     MD5_Final(digest, &ctx);
+}
+
+void compute_sha256(char *str, unsigned char digest[SHA256_DIGEST_LENGTH]){
+    SHA256_CTX ctx;
+    SHA256_Init(&ctx);    
+    SHA256_Update(&ctx, str, strlen(str));
+    SHA256_Final(digest, &ctx);
 }
 
 /**
@@ -121,22 +142,30 @@ void generate_HardwareId(char* hardware_id){
 }
 
 /**
- * @brief Return License File Path
+ * @brief Return License and Signature File Paths
  * 
- * @return The License File path.
+ * 
  */
-char* getLicensePath(){
+void getFilesPaths(char** license, char** signature){
     /* TODO this should depend on the specific app */
     const char* BASE_FOLDER = "./";
 
     size_t lic_path_len =  strlen(BASE_FOLDER) + strlen(LICENSE_FOLDER_NAME) + strlen(LICENSE_FILE_NAME) +1;
+    size_t sig_path_len =  strlen(BASE_FOLDER) + strlen(LICENSE_FOLDER_NAME) + strlen(LICENSE_FILE_NAME) +1;
     char* LICENSE_FILE_PATH = malloc(sizeof(char) *lic_path_len);
+    char* SIGNATURE_FILE_PATH = malloc(sizeof(char) *sig_path_len);
     LICENSE_FILE_PATH[0] = '\0';
-    strcat(LICENSE_FILE_PATH, BASE_FOLDER);
-    strcat(LICENSE_FILE_PATH, LICENSE_FOLDER_NAME);
-    strcat(LICENSE_FILE_PATH, LICENSE_FILE_NAME);
+    SIGNATURE_FILE_PATH[0] = '\0';
 
-    return LICENSE_FILE_PATH;
+    strcat(LICENSE_FILE_PATH, BASE_FOLDER);
+    strcat(SIGNATURE_FILE_PATH, BASE_FOLDER);
+    strcat(LICENSE_FILE_PATH, LICENSE_FOLDER_NAME);
+    strcat(SIGNATURE_FILE_PATH, LICENSE_FOLDER_NAME);
+    strcat(LICENSE_FILE_PATH, LICENSE_FILE_NAME);
+    strcat(SIGNATURE_FILE_PATH, SIGNATURE_FILE_NAME);
+
+    *license = LICENSE_FILE_PATH;
+    *signature = SIGNATURE_FILE_PATH;
 }
 
 /**
@@ -175,14 +204,24 @@ bool checkFirstStartUp(char* LICENSE_FILE_PATH){
     return firstStartup;
 }
 
-char* activateLicense(char* hw_id, char* app_type){
+void activateLicense(char* hw_id, char* app_type, char** license, unsigned char** signature, size_t* signatureLen){
     int status = sendActivation(hw_id, app_type);
     if(status == EXIT_FAILURE){
         LogError( ("Cannot get License.") );        
         exit(EXIT_FAILURE);
     }
 
-    return getLicense();    
+    char* sign;
+    int statusLicense = getLicense(license);
+    int statusSignature = getSignature(&sign);
+
+    if(statusLicense == EXIT_FAILURE || statusSignature == EXIT_FAILURE){
+        LogError( ("Cannot get License.") );    
+        exit(EXIT_FAILURE);
+    }else{
+        size_t decode_size = strlen(sign);
+        *signature = base64_decode(sign, decode_size, signatureLen);
+    }
 }
 
 bool checkLicense(char* license, char* hw_id){
@@ -195,39 +234,162 @@ bool checkLicense(char* license, char* hw_id){
     return isValidLicense();
 }
 
+int parseLicense(char* license, struct parsedLicense_t* pParsedLicense){
+    char* license_key = strtok(license, ";");
+    char* hardware_id = strtok(NULL, ";");
+    char* app_type = strtok(NULL, ";");
+    char* expiration = strtok(NULL, "\n");
+
+    size_t license_key_len = strlen(license_key);
+    size_t hardware_id_len = strlen(hardware_id);
+    size_t app_type_len = strlen(app_type);
+    size_t expiration_len = strlen(expiration);
+
+    if(license_key_len <= 0 || hardware_id_len <= 0 || app_type_len <= 0 || expiration_len <= 0){
+        LogError(("Error parsing license file."));
+        return EXIT_FAILURE;
+    }
+
+    pParsedLicense->license_key = malloc(sizeof(char)*(license_key_len+1));
+    pParsedLicense->license_key[0] = '\0';
+    strcpy(pParsedLicense->license_key, license_key);
+
+    pParsedLicense->hardware_id = malloc(sizeof(char)*(hardware_id_len+1));
+    pParsedLicense->hardware_id[0] = '\0';
+    strcpy(pParsedLicense->hardware_id, hardware_id);
+
+    pParsedLicense->app_type = malloc(sizeof(char)*(app_type_len+1));
+    pParsedLicense->app_type[0] = '\0';
+    strcpy(pParsedLicense->app_type, app_type);
+
+    pParsedLicense->expiration = malloc(sizeof(char)*(expiration_len+1));
+    pParsedLicense->expiration[0] = '\0';
+    strcpy(pParsedLicense->expiration, expiration);
+
+    return EXIT_SUCCESS;
+}
+
+int verifySignature(char* license, unsigned char* signature){    
+    unsigned char digest[SHA256_DIGEST_LENGTH];    
+    compute_sha256(license, digest);
+
+    FILE* pubkey = fopen("./certificates/public.pem", "r"); 
+ 
+    RSA* rsa_pubkey = PEM_read_RSA_PUBKEY(pubkey, NULL, NULL, NULL);
+ 
+    int result = RSA_verify(NID_sha256, digest, SHA256_DIGEST_LENGTH,
+                            signature, SIGNATURE_LENGTH, rsa_pubkey);
+    RSA_free(rsa_pubkey);
+    fclose(pubkey);
+ 
+    if(result == 1){
+        LogInfo(("Signature is valid."));
+        return EXIT_SUCCESS;
+    }else{
+        LogError(("Signature is Invalid."));
+        return EXIT_FAILURE;
+    }
+}
+
+bool isExpiredLicense(char* expiration){
+    time_t current_time = time(NULL);
+
+    if (current_time == ((time_t)-1)) {
+        LogError(("Error obtaining current time."));
+        return true;
+    }
+
+    struct tm expiration_tm;
+    char *s = strptime(expiration, "%Y-%m-%d %H:%M:%S.", &expiration_tm);
+    if(s == NULL){
+        LogError(("Error parsing expiration date."));
+        return true;
+    }
+
+    time_t expiration_time = mktime(&expiration_tm);
+
+    double diff = difftime(expiration_time, current_time);
+    if(diff > 0){
+        LogInfo(("License is not expired."));
+        return false;
+    }else{
+        LogInfo(("License is expired."));
+        return true;
+    }
+}
+
 bool Licensing_CheckLicense(){
-    char* LICENSE_FILE_PATH = getLicensePath();
+    bool validLicense = false;
+    int result;
+    char* LICENSE_FILE_PATH;
+    char* SIGNATURE_FILE_PATH;
+    getFilesPaths(&LICENSE_FILE_PATH, &SIGNATURE_FILE_PATH);
+
     bool firstStartup = checkFirstStartUp(LICENSE_FILE_PATH);
+
     char* license;
+    unsigned char* signature;
+    size_t signatureLen;
 
     LogInfo( ("Generating Hardware ID") );
     char hardware_id[MD5_DIGEST_LENGTH_AS_STRING];
     generate_HardwareId(hardware_id);    
 
-
-    int license_file = open(LICENSE_FILE_PATH, O_CREAT | O_RDWR, 0700);
-    if(license_file < 0){
-        LogError(("Error while opening/creating license file: %s", strerror(errno)));        
-        return false;
-    }
+    int license_file;
+    int signature_file;
 
     if(firstStartup) {
         LogInfo(("Obtaining a license."));
-        license = activateLicense(hardware_id, APP_TYPE);
+        activateLicense(hardware_id, APP_TYPE, &license, &signature, &signatureLen);
 
         LogInfo(("Saving License."));
+        
+        license_file = open(LICENSE_FILE_PATH, O_CREAT | O_RDWR, 0700);
+        if(license_file < 0){
+            LogError(("Error while creating license file: %s", strerror(errno)));        
+            return false;
+        }
+
+        signature_file = open(SIGNATURE_FILE_PATH, O_CREAT | O_RDWR, 0700);
+        if(signature_file < 0){
+            LogError(("Error while creating license file: %s", strerror(errno)));        
+            return false;
+        }
 
         size_t l_len = strlen(license);
-        char buffer[l_len+2];
-        sprintf(buffer, "%s\n", license);
-
-        if(write(license_file, buffer, strlen(buffer)) < 0){
+        char l_buffer[l_len+2];
+        sprintf(l_buffer, "%s\n", license);
+        
+        if(write(license_file, l_buffer, l_len+1) < 0){
             free(LICENSE_FILE_PATH);
+            free(SIGNATURE_FILE_PATH);
             free(license);
+            free(signature);
             LogError(("Error while writing license file: %s", strerror(errno)));        
             return false;
         }
+
+        if(write(signature_file, signature, signatureLen) < 0){
+            free(LICENSE_FILE_PATH);
+            free(SIGNATURE_FILE_PATH);
+            free(license);
+            free(signature);
+            LogError(("Error while writing signature license file: %s", strerror(errno)));        
+            return false;
+        }
     }else{
+        license_file = open(LICENSE_FILE_PATH, O_RDWR, 0700);
+        if(license_file < 0){
+            LogError(("Error while opening license file: %s", strerror(errno)));        
+            return false;
+        }
+
+        signature_file = open(SIGNATURE_FILE_PATH, O_RDWR, 0700);
+        if(signature_file < 0){
+            LogError(("Error while opening signature file: %s", strerror(errno)));        
+            return false;
+        }
+
         LogInfo(("Reading License."));
 
         char buffer[MAX_FILE_LEN] = {0};
@@ -235,6 +397,7 @@ bool Licensing_CheckLicense(){
         int r = read(license_file, buffer, MAX_FILE_LEN);
         if(r < 0){
             free(LICENSE_FILE_PATH);
+            free(SIGNATURE_FILE_PATH);
             LogError(("Error while reading license file: %s", strerror(errno)));
             return false;
         }
@@ -244,13 +407,38 @@ bool Licensing_CheckLicense(){
         license = malloc(sizeof(char) * (strlen(buffer)+1));
         license[0] = '\0';
         strcpy(license, buffer);
+
+        signature = malloc(SIGNATURE_LENGTH);
+        int s = read(signature_file, signature, SIGNATURE_LENGTH);
+        if(s < 0){
+            free(LICENSE_FILE_PATH);
+            free(SIGNATURE_FILE_PATH);
+            LogError(("Error while reading license signature file: %s", strerror(errno)));
+            return false;
+        }
     }
 
-    // check license
-    bool licenseCheck = checkLicense(license, hardware_id);
+    LogInfo(("Verifing signature."));
+    result = verifySignature(license, signature);
+    if(result == EXIT_FAILURE){
+        return false;
+    }
+    
+    struct parsedLicense_t parsedLicense;
+    result = parseLicense(license, &parsedLicense);
+    if(result == EXIT_SUCCESS){
+        bool expired = isExpiredLicense(parsedLicense.expiration);
+        if(expired){            
+            // se scaduta -> renew
+        }else{
+            validLicense = true;
+        }
+    }else{
+        LogError(("Error parsing license."));
+        return false;
+    }
 
     free(LICENSE_FILE_PATH);
     free(license);
-    return licenseCheck;
+    return validLicense;
 }
-
