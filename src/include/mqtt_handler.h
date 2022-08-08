@@ -220,7 +220,7 @@ int sendActivation(char* hw_id, char* app_type);
 
 /* -------------------------------------------- */
 
-int sendCheck(char* hw_id, char* app_type);
+int sendRenew(char* licensekey, char* hw_id, char* app_type);
 
 /* -------------------------------------------- */
 
@@ -228,7 +228,5 @@ int getLicense(char** licenseOut);
 int getSignature(char** signatureOut);
 
 /* -------------------------------------------- */
-
-bool isValidLicense();
 
 #endif
