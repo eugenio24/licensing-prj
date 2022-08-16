@@ -508,9 +508,22 @@ bool Licensing_CheckLicense(){
                 return false;
             }
 
+            // verify the signature of the new license
+            result = verifySignature(license, signature);
+            if(result == EXIT_FAILURE){
+                return false;
+            }
+            
             // parse the new license and check expiration
             result = parseLicense(license, &parsedLicense);
+            if(result == EXIT_FAILURE){
+                return false;
+            }
+            
             expired = isExpiredLicense(parsedLicense.expiration);
+            if(expired){
+                return false;
+            }
         }
 
         validLicense = checkLicense(&parsedLicense, hardware_id, APP_TYPE);
