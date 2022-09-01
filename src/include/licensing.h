@@ -22,6 +22,9 @@
 
 #define LICENSE_FOLDER_NAME "license/"
 #define LICENSE_FILE_NAME "license.txt"
+#define SIGNATURE_FILE_NAME "signature.bin"
+
+#define SIGNATURE_LENGTH 256
 
 bool Licensing_CheckLicense();
 

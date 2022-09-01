@@ -85,7 +85,7 @@
 #endif
 
 #ifndef NETWORK_BUFFER_SIZE
-    #define NETWORK_BUFFER_SIZE    ( 1024U )
+    #define NETWORK_BUFFER_SIZE    ( 4096U )
 #endif
 
 #ifndef OS_NAME
@@ -216,18 +216,17 @@
 
 /* -------------------------------------------- */
 
-int sendActivation(char* hw_id, char* app_type);
+int sendActivation(char* hw_id, char* fn_ckecksum, char* app_type);
 
 /* -------------------------------------------- */
 
-int sendCheck(char* hw_id, char* app_type);
+int sendRenew(char* licensekey, char* hw_id, char* app_type);
 
 /* -------------------------------------------- */
 
-char* getLicense();
+int getLicense(char** licenseOut);
+int getSignature(char** signatureOut);
 
 /* -------------------------------------------- */
-
-bool isValidLicense();
 
 #endif

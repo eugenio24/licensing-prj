@@ -9,11 +9,11 @@ int main(){
 
     if(!validLicense) {
         printf("\nNO LICENSE\n");    
-        exit(1);
+        exit(EXIT_FAILURE);
     }  
     
     printf("\nUNLOCKED APP");
     printf("\nEXAMPLE APP\n");
  
-    return 0;
+    return EXIT_SUCCESS;
 }

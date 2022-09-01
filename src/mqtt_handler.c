@@ -41,10 +41,7 @@ bool recivedResponse = false;
 /*-----------------------------------------------------------*/
 
 char* license = NULL; 
-
-/*-----------------------------------------------------------*/
-
-bool validLicense = false; 
+char* signature = NULL; 
 
 /*-----------------------------------------------------------*/
 
@@ -99,30 +96,30 @@ struct NetworkContext
 /**
  * @brief The activate license request topic. 
  */
-#define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC                 "licensing/activateLicense/" CLIENT_IDENTIFIER "/request"
+#define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC                 "v2/licensing/activateLicense/" CLIENT_IDENTIFIER "/request"
 #define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC_INDEX           0
 #define MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC_LENGTH          ( ( uint16_t ) ( sizeof( MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC ) - 1 ) )
 
 /**
  * @brief The activate license response topic. 
  */
-#define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC                 "licensing/activateLicense/" CLIENT_IDENTIFIER "/response"
+#define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC                 "v2/licensing/activateLicense/" CLIENT_IDENTIFIER "/response"
 #define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_INDEX           1
 #define MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_LENGTH          ( ( uint16_t ) ( sizeof( MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC ) - 1 ) )
 
 /**
- * @brief The check license request topic.
+ * @brief The renew license request topic.
  */
-#define MQTT_CHECK_LICENSE_REQUEST_TOPIC                    "licensing/checkLicense/" CLIENT_IDENTIFIER "/request"
-#define MQTT_CHECK_LICENSE_REQUEST_TOPIC_INDEX              2
-#define MQTT_CHECK_LICENSE_REQUEST_TOPIC_LENGTH             ( ( uint16_t ) ( sizeof( MQTT_CHECK_LICENSE_REQUEST_TOPIC ) - 1 ) )
+#define MQTT_RENEW_LICENSE_REQUEST_TOPIC                    "v2/licensing/renewLicense/" CLIENT_IDENTIFIER "/request"
+#define MQTT_RENEW_LICENSE_REQUEST_TOPIC_INDEX              2
+#define MQTT_RENEW_LICENSE_REQUEST_TOPIC_LENGTH             ( ( uint16_t ) ( sizeof( MQTT_RENEW_LICENSE_REQUEST_TOPIC ) - 1 ) )
 
 /**
- * @brief The check license response topic.
+ * @brief The renew license response topic.
  */
-#define MQTT_CHECK_LICENSE_RESPONSE_TOPIC                    "licensing/checkLicense/" CLIENT_IDENTIFIER "/response"
-#define MQTT_CHECK_LICENSE_RESPONSE_TOPIC_INDEX              3
-#define MQTT_CHECK_LICENSE_RESPONSE_TOPIC_LENGTH             ( ( uint16_t ) ( sizeof( MQTT_CHECK_LICENSE_RESPONSE_TOPIC ) - 1 ) )
+#define MQTT_RENEW_LICENSE_RESPONSE_TOPIC                    "v2/licensing/renewLicense/" CLIENT_IDENTIFIER "/response"
+#define MQTT_RENEW_LICENSE_RESPONSE_TOPIC_INDEX              3
+#define MQTT_RENEW_LICENSE_RESPONSE_TOPIC_LENGTH             ( ( uint16_t ) ( sizeof( MQTT_RENEW_LICENSE_RESPONSE_TOPIC ) - 1 ) )
 
 /*-----------------------------------------------------------*/
 
@@ -144,9 +141,9 @@ char* getTopic(int topicIndex){
     case 1:
         return MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC;
     case 2:
-        return MQTT_CHECK_LICENSE_REQUEST_TOPIC;
+        return MQTT_RENEW_LICENSE_REQUEST_TOPIC;
     case 3:
-        return MQTT_CHECK_LICENSE_RESPONSE_TOPIC;
+        return MQTT_RENEW_LICENSE_RESPONSE_TOPIC;
     default:
         return NULL;
     }
@@ -160,9 +157,9 @@ int getTopicLen(int topicIndex){
     case 1:
         return MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_LENGTH;
     case 2:
-        return MQTT_CHECK_LICENSE_REQUEST_TOPIC_LENGTH;
+        return MQTT_RENEW_LICENSE_REQUEST_TOPIC_LENGTH;
     case 3:
-        return MQTT_CHECK_LICENSE_RESPONSE_TOPIC_LENGTH;
+        return MQTT_RENEW_LICENSE_RESPONSE_TOPIC_LENGTH;
     default:
         return -1;
     }
@@ -170,9 +167,7 @@ int getTopicLen(int topicIndex){
 
 /*-----------------------------------------------------------*/
 
-static void parseResponse_Activation(char* payload, int payloadLength);
-
-static void parseResponse_Check(char* payload, int payloadLength);
+static void parseResponse(char* payload, int payloadLength);
 
 /*-----------------------------------------------------------*/
 
@@ -670,12 +665,9 @@ static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
                    ( int ) pPublishInfo->payloadLength,
                    ( const char * ) pPublishInfo->pPayload ) );
 
-        if(topicIndex == 1){
+        if(topicIndex == 1 || topicIndex == 3){
             recivedResponse = true;
-            parseResponse_Activation((char *) pPublishInfo->pPayload, pPublishInfo->payloadLength);
-        }else if(topicIndex == 3){
-            recivedResponse = true;
-            parseResponse_Check((char *) pPublishInfo->pPayload, pPublishInfo->payloadLength);
+            parseResponse((char *) pPublishInfo->pPayload, pPublishInfo->payloadLength);
         }
     }
     else
@@ -1228,7 +1220,7 @@ static int subscribeRecive( MQTTContext_t* pMqttContext ){
 
 /*-----------------------------------------------------------*/
 
-static void prepareActivation(char* hw_id, char* app_type){
+static void prepareActivation(char* hw_id, char* fn_checksum, char* app_type){
     topicIndex = MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC_INDEX;
 
     if(payload != NULL){
@@ -1236,8 +1228,8 @@ static void prepareActivation(char* hw_id, char* app_type){
     }
 
     char buf[JSON_SIZE];
-
-    sprintf(buf, "{\"hardware_id\":\"%s\",\"app_type\":\"%s\"}", hw_id, app_type);    
+        
+    sprintf(buf, "{\"hardware_id\":\"%s\",\"function_checksum\":\"%s\",\"app_type\":\"%s\"}", hw_id, fn_checksum, app_type);    
     buf[JSON_SIZE-1] = '\0';
 
     JSONStatus_t result = JSON_Validate(buf, strlen(buf));
@@ -1256,8 +1248,8 @@ static void prepareActivationResponse(){
     topicIndex = MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_INDEX;
 }
 
-static void prepareCheck(char* license, char* hw_id){
-    topicIndex = MQTT_CHECK_LICENSE_REQUEST_TOPIC_INDEX;
+static void prepareRenew(char* license, char* hw_id, char* app_type){
+    topicIndex = MQTT_RENEW_LICENSE_REQUEST_TOPIC_INDEX;
 
     if(payload != NULL){
         free(payload);
@@ -1265,7 +1257,7 @@ static void prepareCheck(char* license, char* hw_id){
 
     char buf[JSON_SIZE];
 
-    sprintf(buf, "{\"license_key\":\"%s\",\"hardware_id\":\"%s\"}", license, hw_id);    
+    sprintf(buf, "{\"license_key\":\"%s\",\"hardware_id\":\"%s\",\"app_type\":\"%s\"}", license, hw_id, app_type);    
     buf[JSON_SIZE-1] = '\0';
 
     JSONStatus_t result = JSON_Validate(buf, strlen(buf));
@@ -1280,13 +1272,13 @@ static void prepareCheck(char* license, char* hw_id){
     }  
 }
 
-static void prepareCheckResponse(){
-    topicIndex = MQTT_CHECK_LICENSE_RESPONSE_TOPIC_INDEX;
+static void prepareRenewResponse(){
+    topicIndex = MQTT_RENEW_LICENSE_RESPONSE_TOPIC_INDEX;
 }
 
 /*-----------------------------------------------------------*/
 
-static void parseResponse_Activation(char* payload, int payloadLength){
+static void parseResponse(char* payload, int payloadLength){    
     JSONStatus_t status = JSON_Validate(payload, payloadLength);
     
     if(status == JSONSuccess){
@@ -1306,16 +1298,34 @@ static void parseResponse_Activation(char* payload, int payloadLength){
                 
                 if(status == JSONSuccess){
                     if(valueType == JSONTrue){
-                        char queryLicense[] = "license_key";
+                        char queryLicense[] = "license";
                         size_t queryLicenseLength = sizeof( queryLicense ) - 1;
-                        status = JSON_SearchT( payload, payloadLength, queryLicense, queryLicenseLength, &value, &valueLength, &valueType );
+                        status = JSON_Search( payload, payloadLength, queryLicense, queryLicenseLength, &value, &valueLength );
             
                         if(status == JSONSuccess){
-                            value[ valueLength ] = '\0';
+                            char save = value[ valueLength ];
+                            value[ valueLength ] = '\0';                        
 
                             license = malloc(sizeof(char)*(valueLength + 1));
                             memcpy(license, value, valueLength);
-                            license[valueLength] = '\0';                            
+                            license[valueLength] = '\0';
+                            
+                            value[ valueLength ] = save;
+                        
+                            char querySignature[] = "signature";
+                            size_t querySignatureLength = sizeof( querySignature ) - 1;
+                            status = JSON_Search( payload, payloadLength, querySignature, querySignatureLength, &value, &valueLength);                                                                    
+
+                            if(status == JSONSuccess){
+                                value[ valueLength ] = '\0';                        
+                                
+                                signature = malloc(sizeof(char)*(valueLength + 1));
+                                memcpy(signature, value, valueLength);
+                                signature[valueLength] = '\0';                                
+                            }else{
+                                LogError( ("Cannot get Signature") );
+                            }
+
                         }
                     }else{
                         LogError( ("Cannot get License") );
@@ -1332,43 +1342,7 @@ static void parseResponse_Activation(char* payload, int payloadLength){
 
 /*-----------------------------------------------------------*/
 
-static void parseResponse_Check(char* payload, int payloadLength){
-    JSONStatus_t status = JSON_Validate(payload, payloadLength);
-    
-    if(status == JSONSuccess){
-        char * value;
-        size_t valueLength;
-        JSONTypes_t valueType;
-        char querysuccess[] = "success";
-        size_t querysuccessLength = sizeof( querysuccess ) - 1;
-
-        status = JSON_SearchT( payload, payloadLength, querysuccess, querysuccessLength, &value, &valueLength, &valueType );
-
-        if(status == JSONSuccess){
-            if(valueType == JSONTrue){
-                char queryValidLicense[] = "validLicense";
-                size_t queryValidLicenseLength = sizeof( queryValidLicense ) - 1;
-                status = JSON_SearchT( payload, payloadLength, queryValidLicense, queryValidLicenseLength, &value, &valueLength, &valueType );
-                
-                if(status == JSONSuccess){
-                    if(valueType == JSONTrue){
-                        validLicense = true;
-                    }else{
-                        LogError( ("Invalid License") );
-                    }
-                }
-            }else{
-                LogError( ("Bad Request") );        
-            }
-        }
-    }else{
-        LogError( ("Error parsing the response") );
-    }
-}
-
-/*-----------------------------------------------------------*/
-
-int sendActivation(char* hw_id, char* app_type){
+int sendActivation(char* hw_id, char* fn_checksum, char* app_type){
     int returnStatus = EXIT_SUCCESS;
     MQTTContext_t mqttContext = { 0 };
     NetworkContext_t networkContext = { 0 };
@@ -1406,7 +1380,7 @@ int sendActivation(char* hw_id, char* app_type){
                 LogInfo( ( "An MQTT session with broker is re-established. "
                                "Resending unacked publishes." ) );
 
-                    /* Handle all the resend of publish messages. */
+                /* Handle all the resend of publish messages. */
                 returnStatus = handlePublishResend( &mqttContext );
             }else{
                 LogInfo( ( "A clean MQTT connection is established."
@@ -1423,7 +1397,7 @@ int sendActivation(char* hw_id, char* app_type){
             returnStatus = subscribeRecive( &mqttContext );
 
             if(returnStatus == EXIT_SUCCESS){
-                prepareActivation(hw_id, app_type);
+                prepareActivation(hw_id, fn_checksum, app_type);
                 returnStatus = publish( &mqttContext );
             }
 
@@ -1431,16 +1405,25 @@ int sendActivation(char* hw_id, char* app_type){
             if(returnStatus == EXIT_SUCCESS){
                 topicIndex = MQTT_ACTIVATE_LICENSE_RESPONSE_TOPIC_INDEX;
 
-                int i = 0;
-                while(!recivedResponse || i > 5 ){
+                time_t endwait;
+                time_t start = time(NULL);
+                endwait = start + 6;
+
+                while(!recivedResponse && start < endwait){
                     MQTTStatus_t mqttStatus = MQTT_ProcessLoop( &mqttContext, MQTT_PROCESS_LOOP_TIMEOUT_MS );
 
-                    if( mqttStatus != MQTTSuccess )
-                    {
+                    if( mqttStatus != MQTTSuccess ) {
                         LogWarn( ( "MQTT_ProcessLoop failed: Error = %s.",
                                     MQTT_Status_strerror( mqttStatus ) ) );
+                        break;
                     }
-                    i++;
+
+                    start = time(NULL);
+                }
+
+                if(!recivedResponse){
+                    LogError(("Timeout error no response from server"));
+                    returnStatus = EXIT_FAILURE;
                 }
             }
 
@@ -1469,7 +1452,7 @@ int sendActivation(char* hw_id, char* app_type){
 
 /* -------------------------------------------- */
 
-int sendCheck(char* license, char* hw_id){
+int sendRenew(char* license, char* hw_id, char* app_type){
     int returnStatus = EXIT_SUCCESS;
     MQTTContext_t mqttContext = { 0 };
     NetworkContext_t networkContext = { 0 };
@@ -1519,30 +1502,39 @@ int sendCheck(char* license, char* hw_id){
             }
 
             recivedResponse = false;
-            validLicense = false;
 
-            prepareCheckResponse();
+            prepareRenewResponse();
             returnStatus = subscribeRecive( &mqttContext );
 
             if(returnStatus == EXIT_SUCCESS){
-                prepareCheck(license, hw_id);
+                prepareRenew(license, hw_id, app_type);
                 returnStatus = publish( &mqttContext );
             }
 
             /* Wait for the response */
             if(returnStatus == EXIT_SUCCESS){
-                topicIndex = MQTT_CHECK_LICENSE_RESPONSE_TOPIC_INDEX;
+                topicIndex = MQTT_RENEW_LICENSE_RESPONSE_TOPIC_INDEX;
+                
+                time_t endwait;
+                time_t start = time(NULL);
+                endwait = start + 6;
 
-                int i = 0;
-                while(!recivedResponse){
+                while(!recivedResponse && start < endwait){
                     MQTTStatus_t mqttStatus = MQTT_ProcessLoop( &mqttContext, MQTT_PROCESS_LOOP_TIMEOUT_MS );
 
                     if( mqttStatus != MQTTSuccess )
                     {
-                        break;
                         LogWarn( ( "MQTT_ProcessLoop failed: Error = %s.",
                                     MQTT_Status_strerror( mqttStatus ) ) );
-                    }                    
+                        break;
+                    }         
+
+                    start = time(NULL);           
+                }
+
+                if(!recivedResponse){
+                    LogError(("Timeout error no response from server"));
+                    returnStatus = EXIT_FAILURE;
                 }
             }
 
@@ -1571,18 +1563,30 @@ int sendCheck(char* license, char* hw_id){
 
 /* -------------------------------------------- */
 
-char* getLicense(){
-    char* licenseOut = malloc(sizeof(char)*(strlen(license)+1));
-    licenseOut[0] = '\0';
+int getLicense(char** licenseOut){
+    if(license == NULL|| strlen(license) <= 0) return EXIT_FAILURE;
 
-    strcpy(licenseOut, license);
+    char* tmp = malloc(sizeof(char)*(strlen(license)+1));
+    tmp[0] = '\0';
+    strcpy(tmp, license);
+
+    *licenseOut = tmp;
 
     free(license);
-    return licenseOut;
+    return EXIT_SUCCESS;
+}
+
+int getSignature(char** signatureOut){    
+    if(signature == NULL || strlen(signature) <= 0) return  EXIT_FAILURE;
+
+    char* tmp = malloc(sizeof(char)*(strlen(signature)+1));
+    tmp[0] = '\0';
+    strcpy(tmp, signature);
+
+    *signatureOut = tmp;
+
+    free(signature);
+    return EXIT_SUCCESS;
 }
 
 /* -------------------------------------------- */
-
-bool isValidLicense(){
-    return validLicense;
-}
