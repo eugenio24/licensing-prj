@@ -7,3 +7,6 @@ make
 ```
 
 Copy certificates in `build/bin/certificates` and edit `src/include/licensing_mqtt_config.h`
+
+# License
+This software is licensed under the [MIT open source license](LICENSE).

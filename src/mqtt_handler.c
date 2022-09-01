@@ -1220,7 +1220,7 @@ static int subscribeRecive( MQTTContext_t* pMqttContext ){
 
 /*-----------------------------------------------------------*/
 
-static void prepareActivation(char* hw_id, char* app_type){
+static void prepareActivation(char* hw_id, char* fn_checksum, char* app_type){
     topicIndex = MQTT_ACTIVATE_LICENSE_REQUEST_TOPIC_INDEX;
 
     if(payload != NULL){
@@ -1228,8 +1228,8 @@ static void prepareActivation(char* hw_id, char* app_type){
     }
 
     char buf[JSON_SIZE];
-
-    sprintf(buf, "{\"hardware_id\":\"%s\",\"app_type\":\"%s\"}", hw_id, app_type);    
+        
+    sprintf(buf, "{\"hardware_id\":\"%s\",\"function_checksum\":\"%s\",\"app_type\":\"%s\"}", hw_id, fn_checksum, app_type);    
     buf[JSON_SIZE-1] = '\0';
 
     JSONStatus_t result = JSON_Validate(buf, strlen(buf));
@@ -1342,7 +1342,7 @@ static void parseResponse(char* payload, int payloadLength){
 
 /*-----------------------------------------------------------*/
 
-int sendActivation(char* hw_id, char* app_type){
+int sendActivation(char* hw_id, char* fn_checksum, char* app_type){
     int returnStatus = EXIT_SUCCESS;
     MQTTContext_t mqttContext = { 0 };
     NetworkContext_t networkContext = { 0 };
@@ -1397,7 +1397,7 @@ int sendActivation(char* hw_id, char* app_type){
             returnStatus = subscribeRecive( &mqttContext );
 
             if(returnStatus == EXIT_SUCCESS){
-                prepareActivation(hw_id, app_type);
+                prepareActivation(hw_id, fn_checksum, app_type);
                 returnStatus = publish( &mqttContext );
             }
 

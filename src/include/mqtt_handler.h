@@ -216,7 +216,7 @@
 
 /* -------------------------------------------- */
 
-int sendActivation(char* hw_id, char* app_type);
+int sendActivation(char* hw_id, char* fn_ckecksum, char* app_type);
 
 /* -------------------------------------------- */
 

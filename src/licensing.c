@@ -18,34 +18,43 @@
 #include <netpacket/packet.h>
 
 /* openssl */
-#include <openssl/md5.h>
-#define MD5_DIGEST_LENGTH_AS_STRING MD5_DIGEST_LENGTH*2+1
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
+#define SHA1_DIGEST_LENGTH_AS_STRING SHA_DIGEST_LENGTH*2+1
 
 #include "base64_utils.h"
 
-#define MAX_FILE_LEN 100
+#define MAX_FILE_LEN 200
+
+#define FUNCTION_LEN 2584
 
 struct parsedLicense_t {
     char* app_type;
     char* license_key;
     char* hardware_id;
+    char* function_checksum;
     char* expiration;
 };
 
 /**
- * @brief Given a string compute the hash
+ * @brief Given a string compute the SHA1 hash
  * 
  * @param[in] str String to be hashed.
  * @param[out] digest Computed Hash.
  */
-void compute_md5(char *str, unsigned char digest[MD5_DIGEST_LENGTH]){
-    MD5_CTX ctx;
-    MD5_Init(&ctx);
-    MD5_Update(&ctx, str, strlen(str));
-    MD5_Final(digest, &ctx);
+void compute_sha1(char *str, unsigned char digest[SHA_DIGEST_LENGTH]){
+    SHA_CTX ctx;
+    SHA1_Init(&ctx);
+    SHA1_Update(&ctx, str, strlen(str));
+    SHA1_Final(digest, &ctx);
+}
+
+void compute_sha1_len(void *data, size_t len, unsigned char digest[SHA_DIGEST_LENGTH]){
+    SHA_CTX ctx;
+    SHA1_Init(&ctx);
+    SHA1_Update(&ctx, data, len);
+    SHA1_Final(digest, &ctx);
 }
 
 void compute_sha256(char *str, unsigned char digest[SHA256_DIGEST_LENGTH]){
@@ -115,12 +124,12 @@ int hashMACs(char* mac_hash){
     char* mac_concat;
     int result = getMACs(&mac_concat);
     if(result == EXIT_SUCCESS){        
-        unsigned char digest[16];
-        compute_md5(mac_concat, digest);
+        unsigned char digest[SHA_DIGEST_LENGTH];
+        compute_sha1(mac_concat, digest);
         free(mac_concat);
 
         // hash to string
-        for (int i = 0, j = 0; i < 16; i++, j+=2)
+        for (int i = 0, j = 0; i < SHA_DIGEST_LENGTH; i++, j+=2)
             sprintf(mac_hash+j, "%02x", digest[i]);
         mac_hash[sizeof digest * 2] = 0;
     }
@@ -133,7 +142,7 @@ int hashMACs(char* mac_hash){
  * @param[out] hardware_id The Hardware ID 
  */
 int generate_HardwareId(char* hardware_id){    
-    char mac_hash[MD5_DIGEST_LENGTH_AS_STRING];
+    char mac_hash[SHA1_DIGEST_LENGTH_AS_STRING];
     int result = hashMACs(mac_hash);
     
     if(result == EXIT_SUCCESS){
@@ -141,6 +150,22 @@ int generate_HardwareId(char* hardware_id){
     }
 
     return result;
+}
+
+int generate_functionChecksum(char* function_checksum){
+    void* fnPtr = &Licensing_CheckLicense;
+
+    unsigned char digest[SHA_DIGEST_LENGTH];
+    compute_sha1_len(fnPtr, FUNCTION_LEN, digest);
+
+    char str[SHA1_DIGEST_LENGTH_AS_STRING];
+    for (int i = 0, j = 0; i < SHA_DIGEST_LENGTH; i++, j+=2)
+        sprintf(str+j, "%02x", digest[i]);
+    str[sizeof digest * 2] = 0;
+
+    strcpy(function_checksum, str);
+
+    return EXIT_SUCCESS;
 }
 
 /**
@@ -220,8 +245,8 @@ int saveLicense(int license_fd, char* license, int signature_fd, char* signature
     return EXIT_SUCCESS;
 }
 
-int activateLicense(char* hw_id, char* app_type, char** license, unsigned char** signature){
-    int status = sendActivation(hw_id, app_type);
+int activateLicense(char* hw_id, char* fn_checksum, char* app_type, char** license, unsigned char** signature){
+    int status = sendActivation(hw_id, fn_checksum, app_type);
     if(status == EXIT_FAILURE){
         LogError( ("Cannot get License.") );        
         return EXIT_FAILURE;
@@ -277,17 +302,22 @@ int renewLicense(char* hw_id, char* app_type, char* license_key, char** license,
 }
 
 int parseLicense(char* license, struct parsedLicense_t* pParsedLicense){
-    char* license_key = strtok(license, ";");
+    char tmp[strlen(license)];
+    strcpy(tmp, license);
+
+    char* license_key = strtok(tmp, ";");
     char* hardware_id = strtok(NULL, ";");
+    char* function_checksum = strtok(NULL, ";");
     char* app_type = strtok(NULL, ";");
     char* expiration = strtok(NULL, "\n");
 
     size_t license_key_len = strlen(license_key);
     size_t hardware_id_len = strlen(hardware_id);
+    size_t function_checksum_len = strlen(function_checksum);
     size_t app_type_len = strlen(app_type);
     size_t expiration_len = strlen(expiration);
 
-    if(license_key_len <= 0 || hardware_id_len <= 0 || app_type_len <= 0 || expiration_len <= 0){
+    if(license_key_len <= 0 || hardware_id_len <= 0 || function_checksum_len <= 0 || app_type_len <= 0 || expiration_len <= 0){
         LogError(("Error parsing license file."));
         return EXIT_FAILURE;
     }
@@ -299,6 +329,10 @@ int parseLicense(char* license, struct parsedLicense_t* pParsedLicense){
     pParsedLicense->hardware_id = malloc(sizeof(char)*(hardware_id_len+1));
     pParsedLicense->hardware_id[0] = '\0';
     strcpy(pParsedLicense->hardware_id, hardware_id);
+
+    pParsedLicense->function_checksum = malloc(sizeof(char)*(function_checksum_len+1));
+    pParsedLicense->function_checksum[0] = '\0';
+    strcpy(pParsedLicense->function_checksum, function_checksum);
 
     pParsedLicense->app_type = malloc(sizeof(char)*(app_type_len+1));
     pParsedLicense->app_type[0] = '\0';
@@ -368,6 +402,13 @@ bool checkLicense(struct parsedLicense_t* pParsedLicense, char* hw_id, char* app
     return true;
 }
 
+bool validFunctionChecksum(char* runtime_checksum, char* activation_checksum){
+    if(strcmp(runtime_checksum, activation_checksum) != 0){
+        return false;
+    }
+    return true;
+}
+
 bool Licensing_CheckLicense(){
     bool validLicense = false;
     int result;
@@ -387,8 +428,17 @@ bool Licensing_CheckLicense(){
     unsigned char* signature;
 
     LogInfo( ("Generating Hardware ID") );
-    char hardware_id[MD5_DIGEST_LENGTH_AS_STRING];    
+    char hardware_id[SHA1_DIGEST_LENGTH_AS_STRING];    
     result = generate_HardwareId(hardware_id);    
+    if(result == EXIT_FAILURE){
+        free(LICENSE_FILE_PATH);
+        free(SIGNATURE_FILE_PATH);
+        return false;
+    }
+
+    LogInfo( ("Generating Function Checksum") );
+    char function_checksum[SHA1_DIGEST_LENGTH_AS_STRING];    
+    result = generate_functionChecksum(function_checksum);    
     if(result == EXIT_FAILURE){
         free(LICENSE_FILE_PATH);
         free(SIGNATURE_FILE_PATH);
@@ -400,7 +450,7 @@ bool Licensing_CheckLicense(){
 
     if(firstStartup) {
         LogInfo(("Obtaining a license."));
-        result = activateLicense(hardware_id, APP_TYPE, &license, &signature);
+        result = activateLicense(hardware_id, function_checksum, APP_TYPE, &license, &signature);
         if(result == EXIT_FAILURE){
             return false;
         }
@@ -468,15 +518,21 @@ bool Licensing_CheckLicense(){
         }
     }
 
-    LogInfo(("Verifing signature."));
-    result = verifySignature(license, signature);
-    if(result == EXIT_FAILURE){
-        return false;
-    }
-    
     struct parsedLicense_t parsedLicense;
     result = parseLicense(license, &parsedLicense);
     if(result == EXIT_SUCCESS){
+        LogInfo(("Verifing Function Checksum."));        
+        if(!validFunctionChecksum(function_checksum, parsedLicense.function_checksum)){
+            LogError(( "Function Checksum not match." ));
+            return false;
+        }
+
+        LogInfo(("Verifing signature."));
+        result = verifySignature(license, signature);
+        if(result == EXIT_FAILURE){
+            return false;
+        }
+    
         bool expired = isExpiredLicense(parsedLicense.expiration);
         if(expired){
             LogInfo(("License Expired. Sending Renew..."));
@@ -485,6 +541,7 @@ bool Licensing_CheckLicense(){
                 free(parsedLicense.license_key);
                 free(parsedLicense.app_type);
                 free(parsedLicense.hardware_id);
+                free(parsedLicense.function_checksum);
                 free(parsedLicense.expiration);
 
                 free(LICENSE_FILE_PATH);
@@ -499,6 +556,7 @@ bool Licensing_CheckLicense(){
                 free(parsedLicense.license_key);
                 free(parsedLicense.app_type);
                 free(parsedLicense.hardware_id);
+                free(parsedLicense.function_checksum);
                 free(parsedLicense.expiration);
 
                 free(LICENSE_FILE_PATH);
@@ -540,6 +598,7 @@ bool Licensing_CheckLicense(){
     free(parsedLicense.license_key);
     free(parsedLicense.app_type);
     free(parsedLicense.hardware_id);
+    free(parsedLicense.function_checksum);
     free(parsedLicense.expiration);
 
     free(LICENSE_FILE_PATH);
